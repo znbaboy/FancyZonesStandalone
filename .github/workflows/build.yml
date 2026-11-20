@@ -1,0 +1,115 @@
+name: Build
+
+# Releases a new package only when FancyZones itself changed in a PowerToys release
+# (src/modules/fancyzones: FancyZones, FancyZonesLib, FancyZonesEditorCommon, editor).
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish a release even if FancyZones is unchanged
+        type: boolean
+        default: false
+      powertoys_tag:
+        description: PowerToys tag to build from (blank = latest stable)
+        type: string
+        default: ''
+  push:
+    branches: [main]
+    paths: ['src/**', 'build/**', '.github/workflows/**']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.c.outputs.tag }}
+      fz_hash: ${{ steps.c.outputs.fz_hash }}
+      release: ${{ steps.c.outputs.release }}
+    steps:
+      - id: c
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.powertoys_tag }}
+          FORCE: ${{ inputs.force }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$(gh api repos/microsoft/PowerToys/releases/latest --jq .tag_name)}"
+          fz_hash=$(gh api "repos/microsoft/PowerToys/contents/src/modules/fancyzones?ref=$tag" \
+            --jq '[.[] | select(.type=="dir") | select(.name|IN("FancyZones","FancyZonesLib","FancyZonesEditorCommon","editor")) | "\(.name):\(.sha)"] | sort | join(",")' \
+            | sha256sum | cut -c1-16)
+          last=$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null | grep -oP 'fz-hash: \K[0-9a-f]+' || true)
+          echo "PowerToys $tag  fancyzones hash $fz_hash  (last released: ${last:-none})"
+          release=false
+          if [ "$fz_hash" != "$last" ] && [ "$EVENT" != "push" ]; then release=true; fi
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$FORCE" = "true" ]; then release=true; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "fz_hash=$fz_hash" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "### PowerToys \`$tag\` · FancyZones hash \`$fz_hash\` · last \`${last:-none}\` · release: **$release**" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: check
+    if: github.event_name != 'schedule' || needs.check.outputs.release == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build tray app
+        run: dotnet build src/FancyZonesStandalone -c Release
+
+      - name: Package FancyZones
+        id: pkg
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./build/Build-Package.ps1 -Tag '${{ needs.check.outputs.tag }}' -Build ${{ github.run_number }} -FzHash '${{ needs.check.outputs.fz_hash }}' -ManagerDir src/FancyZonesStandalone/bin/Release/net48
+
+      - name: Smoke test
+        shell: pwsh
+        run: ./build/Smoke-Test.ps1 -Pkg '${{ steps.pkg.outputs.pkg }}' -ShotDir screenshots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FancyZones-Standalone-${{ steps.pkg.outputs.tag }}
+          path: ${{ steps.pkg.outputs.pkg }}
+
+      - name: Publish release
+        if: needs.check.outputs.release == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.pkg.outputs.tag }}'
+          $pt = '${{ needs.check.outputs.tag }}'
+          $notes = @"
+          FancyZones from PowerToys [$pt](https://github.com/microsoft/PowerToys/releases/tag/$pt), repackaged with the tray companion app.
+
+          **Install:** extract the zip to a folder you own (e.g. ``%USERPROFILE%\Apps\FancyZones``) and run ``FancyZonesStandalone.exe``.
+          Existing installs update themselves.
+
+          SHA256 ``${{ steps.pkg.outputs.sha256 }}``
+
+          <!-- fz-hash: ${{ needs.check.outputs.fz_hash }} -->
+          "@
+          $notes = ($notes -split "`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`n"
+          gh release create $tag '${{ steps.pkg.outputs.zip }}' '${{ steps.pkg.outputs.zip }}.sha256' --title "FancyZones $($pt.TrimStart('v')) (build ${{ github.run_number }})" --notes $notes
