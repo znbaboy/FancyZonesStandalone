@@ -4,8 +4,7 @@ Microsoft PowerToys' **FancyZones**, without the rest of PowerToys. No installer
 
 > ⚠️ This project is **100% vibe coded** (written by AI, reviewed by a human).
 
-![Tray menu](docs/tray-menu.png)
-![Layout editor](docs/editor.png)
+<img src="docs/tray-menu.png" alt="Tray menu" height="300"> <img src="docs/editor.png" alt="Layout editor" height="300">
 
 ## Features
 

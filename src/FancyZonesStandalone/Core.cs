@@ -107,8 +107,9 @@ namespace FancyZonesStandalone
     internal static class Startup
     {
         private const string RunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+        // Registry value names are case-insensitive, so this also replaces the old Configure.ps1
+        // entry ("FancyZones StandAlone") that started PowerToys.FancyZones.exe directly.
         private const string Name = "FancyZones Standalone";
-        private const string LegacyName = "FancyZones StandAlone"; // entry written by the old Configure.ps1
 
         public static bool Enabled
         {
@@ -123,8 +124,6 @@ namespace FancyZonesStandalone
                 {
                     if (value) k.SetValue(Name, "\"" + Paths.ManagerExe + "\" --background");
                     else k.DeleteValue(Name, false);
-                    // The old script started PowerToys.FancyZones.exe directly; the manager does that now.
-                    k.DeleteValue(LegacyName, false);
                 }
             }
         }
