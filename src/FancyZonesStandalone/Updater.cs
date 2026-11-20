@@ -25,7 +25,7 @@ namespace FancyZonesStandalone
     /// <summary>Checks GitHub releases of this repo and swaps the package in place.</summary>
     internal static class Updater
     {
-        public const string Repo = "znbaboy/FancyZones-Standalone";
+        public const string Repo = "znbaboy/FancyZonesStandalone";
 
         private static readonly HttpClient Http;
 
