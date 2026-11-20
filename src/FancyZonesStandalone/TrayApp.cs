@@ -41,7 +41,7 @@ namespace FancyZonesStandalone
             menu.Items.Add("Open app folder", null, (s, e) => Process.Start("explorer.exe", "\"" + Paths.AppDir + "\""));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Exit", null, (s, e) => ExitApp());
-            menu.Opening += (s, e) => Refresh();
+            menu.Opening += (s, e) => { Refresh(); Theme.Apply(menu); };
 
             Icon ico = null;
             try { if (File.Exists(Paths.FancyZonesExe)) ico = Icon.ExtractAssociatedIcon(Paths.FancyZonesExe); } catch { }
@@ -55,6 +55,7 @@ namespace FancyZonesStandalone
             _icon.DoubleClick += (s, e) => FancyZones.OpenEditor();
             _icon.BalloonTipClicked += async (s, e) => { if (_pending != null) await ApplyUpdate(_pending); };
             Refresh();
+            Theme.Apply(menu);
 
             // Keep FancyZones alive (e.g. after a crash) while the tray app runs.
             _watchdog = new Timer { Interval = 15000 };

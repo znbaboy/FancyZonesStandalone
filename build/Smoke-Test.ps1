@@ -30,6 +30,12 @@ function Wait-Proc($name, $sec) {
 
 $mgr = Join-Path $Pkg 'FancyZonesStandalone.exe'
 
+# Dark mode for the screenshots (editor and tray menu follow the Windows app theme).
+$pers = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+New-Item $pers -Force | Out-Null
+Set-ItemProperty $pers AppsUseLightTheme 0 -Type DWord
+Set-ItemProperty $pers SystemUsesLightTheme 0 -Type DWord
+
 # 1. Tray app starts FancyZones.
 Start-Process $mgr
 if (Wait-Proc 'PowerToys.FancyZones' 20) { Write-Host "[smoke] FancyZones is running" } else { $failures += 'FancyZones did not start' }
