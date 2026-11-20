@@ -31,11 +31,12 @@ function Wait-Proc($name, $sec) {
 $mgr = Join-Path $Pkg 'FancyZonesStandalone.exe'
 
 # 1. Tray app starts FancyZones.
-Start-Process $mgr -ArgumentList '--show-menu'
+Start-Process $mgr
 if (Wait-Proc 'PowerToys.FancyZones' 20) { Write-Host "[smoke] FancyZones is running" } else { $failures += 'FancyZones did not start' }
-Start-Sleep 4
-Shot 'tray-menu'
-[System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+Start-Sleep 3
+$run = (Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).'FancyZones Standalone'
+Write-Host "[smoke] startup entry: $run"
+if (-not $run) { $failures += 'Start-with-Windows entry was not created on first run' }
 
 # 2. Second launch asks FancyZones to open the editor.
 Start-Process $mgr
@@ -49,6 +50,14 @@ if (Wait-Proc 'PowerToys.FancyZonesEditor' 30) {
 $logs = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\PowerToys\FancyZones\Editor\Logs" -Recurse -File -ErrorAction SilentlyContinue
 foreach ($l in $logs) { $bad = Select-String -Path $l.FullName -Pattern 'Unhandled exception' -SimpleMatch; if ($bad) { $failures += "Editor log: $($bad[0].Line)" } }
 Get-Process 'PowerToys.FancyZonesEditor' -ErrorAction SilentlyContinue | Stop-Process -Force
+
+# Tray menu screenshot (restart the tray app with the menu forced open).
+Get-Process 'FancyZonesStandalone' -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep 2
+Start-Process $mgr -ArgumentList '--show-menu'
+Start-Sleep 5
+Shot 'tray-menu'
+[System.Windows.Forms.SendKeys]::SendWait('{ESC}')
 
 # 3. Export / import round trip via the CLI.
 $zip = Join-Path $env:RUNNER_TEMP 'fz-export.zip'
